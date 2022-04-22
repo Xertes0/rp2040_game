@@ -4,10 +4,13 @@
 #![no_std]
 #![no_main]
 
-use cortex_m::{delay::Delay, prelude::_embedded_hal_blocking_spi_Write};
+mod pcd8544;
+use pcd8544::PCD8544;
+
 use cortex_m_rt::entry;
 use defmt::*;
 use defmt_rtt as _;
+use embedded_graphics::{pixelcolor::BinaryColor, prelude::{Point, Size, Primitive}, primitives::{Circle, PrimitiveStyle, Rectangle}, Drawable, mono_font::{MonoTextStyle, iso_8859_10::FONT_4X6, ascii::FONT_6X10, iso_8859_1::FONT_5X7}, text::Text};
 use embedded_hal::{digital::v2::OutputPin, spi::MODE_0};
 use embedded_time::{fixed_point::FixedPoint, rate::Extensions};
 use panic_probe as _;
@@ -23,14 +26,6 @@ use bsp::hal::{
     sio::Sio,
     watchdog::Watchdog, gpio::{Pin, Output, PushPull, PinId, FunctionSpi}, Spi,
 };
-
-const FUNCTION_SET: u8 = 0x20;
-const ADDRESSING_VERT: u8 = 0x02;
-const EXTENDED_INSTR: u8 = 0x01;
-const TEMP_COEFF_2: u8 = 0x06;
-const BIAS_1_40: u8 = 0x14;
-const SET_VOP: u8 = 0x80;
-const DISPLAY_NORMAL: u8 = 0x0c;
 
 #[entry]
 fn main() -> ! {
@@ -74,7 +69,7 @@ fn main() -> ! {
     //let mut clk_pin = pins.gpio6.into_push_pull_output();
     let _ = pins.gpio6.into_mode::<FunctionSpi>();
     let _ = pins.gpio7.into_mode::<FunctionSpi>();
-    let mut spi = Spi::<_, _, 8>::new(pac.SPI0).init(&mut pac.RESETS, 125_000_000u32.Hz(), 2_000_000u32.Hz(), &MODE_0);
+    let spi = Spi::<_, _, 8>::new(pac.SPI0).init(&mut pac.RESETS, 125_000_000u32.Hz(), 2_000_000u32.Hz(), &MODE_0);
 
     ce_pin.set_high().unwrap();
     dc_pin.set_low().unwrap();
@@ -88,131 +83,22 @@ fn main() -> ! {
 
     led_pin.set_low().unwrap();
 
-    let fnset = FUNCTION_SET & !ADDRESSING_VERT;
-    command(&mut dc_pin, &mut ce_pin, &mut spi, fnset);
-    command(&mut dc_pin, &mut ce_pin, &mut spi, fnset | EXTENDED_INSTR);
-    command(&mut dc_pin, &mut ce_pin, &mut spi, TEMP_COEFF_2);
-    command(&mut dc_pin, &mut ce_pin, &mut spi, BIAS_1_40);
-    command(&mut dc_pin, &mut ce_pin, &mut spi, SET_VOP | 0x3f);
-    command(&mut dc_pin, &mut ce_pin, &mut spi, fnset & !EXTENDED_INSTR);
-    command(&mut dc_pin, &mut ce_pin, &mut spi, DISPLAY_NORMAL);
+    let mut pcd = PCD8544::new(rst_pin, ce_pin, dc_pin, spi);
 
-    //clear
-    draw(&mut dc_pin, &mut ce_pin, &mut spi, &[200u8;84*48/8]);
+    //let raw_image = ImageRaw::<BinaryColor>::new(&[0;84*48], 84);
+    //let mut image = Image::new(&raw_image, Point::zero());
+    //Rectangle::new(Point::new(0, 20), Size::new(10, 10))
+    //    .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
+    //    .draw(&mut pcd).unwrap();
+    let style = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
+    //Text::new("Abc!", Point::new(5, 15), style).draw(&mut pcd).unwrap();
+    Text::new("Ekran test", Point::new(5, 15), style).draw(&mut pcd).unwrap();
+
+    Circle::new(Point::new(10, 20), 30)
+        .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
+        .draw(&mut pcd).unwrap();
 
     loop {}
-
-    //lcd_command(&mut din_pin, &mut clk_pin, &mut delay, 0x20 | 0x01);
-    //lcd_command(&mut din_pin, &mut clk_pin, &mut delay, 0x13 | 0x03);
-    //lcd_command(&mut din_pin, &mut clk_pin, &mut delay, 0x80 | 0x32);
-    //lcd_command(&mut din_pin, &mut clk_pin, &mut delay, 0x20);
-    //lcd_command(&mut din_pin, &mut clk_pin, &mut delay, 0x08 | 0x04);
-
-    //delay.delay_ms(500);
-
-    //led_pin.set_high().unwrap();
-    //// draw
-
-    //let mut buffer = [true; 48*84];
-    ////let mut is_on = false;
-    ////for i in 0..1 {
-    //    lcd_draw(&mut dc_pin, &mut din_pin, &mut clk_pin, &mut led_pin, &mut delay, &buffer);
-    //    led_pin.set_low().unwrap();
-    //    //buffer[i * 10] = false;
-    //    //delay.delay_ms(100);
-    //    //if is_on {
-    //    //    led_pin.set_low().unwrap();
-    //    //    is_on = false;
-    //    //} else {
-    //    //    led_pin.set_high().unwrap();
-    //    //    is_on = true;
-    //    //}
-    ////}
-
-    //dc_pin.set_low().unwrap();
-    //rst_pin.set_low().unwrap();
-    //clk_pin.set_low().unwrap();
-    //din_pin.set_low().unwrap();
-    //ce_pin.set_low().unwrap();
-
-    //led_pin.set_low().unwrap();
-
-    //loop {
-    //}
 }
-
-fn command<GPIO0: PinId, GPIO1: PinId, A: bsp::hal::spi::SpiDevice>(
-    dc: &mut Pin<GPIO0, Output<PushPull>>,
-    ce: &mut Pin<GPIO1, Output<PushPull>>,
-    spi: &mut Spi<bsp::hal::spi::Enabled, A, 8>,
-    data: u8
-) {
-    dc.set_low().unwrap();
-    ce.set_low().unwrap();
-
-    spi.write(&[data]).unwrap();
-
-    ce.set_high().unwrap();
-}
-
-fn draw<GPIO0: PinId, GPIO1: PinId, A: bsp::hal::spi::SpiDevice>(
-    dc: &mut Pin<GPIO0, Output<PushPull>>,
-    ce: &mut Pin<GPIO1, Output<PushPull>>,
-    spi: &mut Spi<bsp::hal::spi::Enabled, A, 8>,
-    data: &[u8]
-) {
-    dc.set_high().unwrap();
-    ce.set_low().unwrap();
-
-    spi.write(data).unwrap();
-
-    ce.set_high().unwrap();
-}
-
-//const DELAY: u32 = 10;
-//
-//fn lcd_draw<GPIO0: PinId, GPIO1: PinId, GPIO2: PinId, GPIO3: PinId> (
-//    dc_pin:  &mut Pin<GPIO0, Output<PushPull>>,
-//    din_pin: &mut Pin<GPIO1, Output<PushPull>>,
-//    clk_pin: &mut Pin<GPIO2, Output<PushPull>>,
-//    led_pin: &mut Pin<GPIO3, Output<PushPull>>,
-//    delay:   &mut Delay,
-//    data: &[bool; 48*84])
-//{
-//    for x in 0u8..84u8 {
-//        dc_pin.set_low().unwrap();
-//        lcd_command(din_pin, clk_pin, delay, 0x80 | x);
-//
-//        for y in 0u8..6u8 {
-//            dc_pin.set_low().unwrap();
-//            lcd_command(din_pin, clk_pin, delay, 0x40 | y);
-//
-//            dc_pin.set_high().unwrap();
-//            for _ in 0u8..8u8 {
-//                //if data[((i * 48 * 6) + (y * 48) + x) as usize] {
-//                //if i & 2 == 0 {
-//                    din_pin.set_high().unwrap();
-//                //} else {
-//                    //din_pin.set_low().unwrap();
-//                //}
-//                clk_pin.set_high().unwrap();
-//                delay.delay_ms(DELAY);
-//                clk_pin.set_low().unwrap();
-//            }
-//        }
-//        led_pin.set_low().unwrap();
-//        return ();
-//    }
-//
-//    lcd_command(din_pin, clk_pin, delay, 0x40);
-//}
-
-//fn lcd_command<GPIO0: PinId, GPIO1: PinId> (
-//    din_pin: &mut Pin<GPIO0, Output<PushPull>>,
-//    clk_pin: &mut Pin<GPIO1, Output<PushPull>>,
-//    delay:   &mut Delay,
-//    data: u8)
-//{
-//}
 
 // End of file

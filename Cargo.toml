@@ -26,6 +26,8 @@ rp-pico = "0.3.0"
 # rp2040-hal = { version="0.4.0", features=["rt"] }
 # rp2040-boot2 = "0.2.0"
 
+embedded-graphics = "0.7.1"
+
 # cargo build/run
 [profile.dev]
 codegen-units = 1
