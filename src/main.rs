@@ -6,6 +6,7 @@ mod inputs;
 mod menu;
 mod games;
 mod rand;
+mod sfx;
 
 use inputs::Inputs;
 use menu::Menu;

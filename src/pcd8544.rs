@@ -73,12 +73,12 @@ impl PCD8544 {
     }
 
     pub fn set(&mut self, value: u8) {
-        self.draw(&[value;84*48/8]);
+        self.draw_data(&[value;84*48/8]);
     }
 
     pub fn clear(&mut self) {
         self.draw_buffer = [0; 84*48/8];
-        self.draw_self();
+        self.draw();
     }
 
     fn command(&mut self, data: u8) {
@@ -90,7 +90,7 @@ impl PCD8544 {
         self.ce.set_high().unwrap();
     }
 
-    fn draw(&mut self, data: &[u8]) {
+    fn draw_data(&mut self, data: &[u8]) {
         self.dc.set_high().unwrap();
         self.ce.set_low().unwrap();
 
@@ -99,13 +99,17 @@ impl PCD8544 {
         self.ce.set_high().unwrap();
     }
 
-    fn draw_self(&mut self) {
+    pub fn draw(&mut self) {
         self.dc.set_high().unwrap();
         self.ce.set_low().unwrap();
 
         self.spi.write(&self.draw_buffer).unwrap();
 
         self.ce.set_high().unwrap();
+    }
+
+    pub fn inverse(&mut self) {
+        self.draw_buffer.iter_mut().for_each(|x| *x = !*x);
     }
 }
 
@@ -142,7 +146,7 @@ impl DrawTarget for PCD8544 {
             self.draw_buffer[index] = (self.draw_buffer[index] & !(0x01 << offset)) | ((if color.is_on() {1} else {0}) << offset);
         }
 
-        self.draw_self();
+        self.draw();
         Ok(())
     }
 }

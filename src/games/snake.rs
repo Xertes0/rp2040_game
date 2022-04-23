@@ -1,14 +1,19 @@
 use cortex_m::delay::Delay;
 use embedded_graphics::Drawable;
+use embedded_graphics::mono_font::MonoTextStyle;
+use embedded_graphics::mono_font::iso_8859_14::FONT_5X7;
 use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::prelude::{Point, Size, Primitive};
 use embedded_graphics::primitives::{Rectangle, PrimitiveStyle};
+use embedded_graphics::text::Text;
+use heapless::String;
 
 use crate::inputs::Inputs;
 use crate::pcd8544::PCD8544;
 use crate::rand::Rand;
+use crate::sfx::inverse_blink::inverse_blink;
 
-const MAX_SIZE: usize = 30;
+const MAX_SIZE: usize = 100;
 
 #[derive(Clone, Copy)]
 enum Direction {
@@ -134,12 +139,37 @@ impl Snake {
     }
 }
 
+struct Apple {
+    pub pos: Point,
+    tick: u8,
+}
+
+impl Apple {
+    pub fn new() -> Self {
+        Self {
+            pos: Point::new(0,0),
+            tick: 0,
+        }
+    }
+
+    pub fn draw(&mut self, pcd: &mut PCD8544) {
+        if self.tick == 2 {
+            Rectangle::new(self.pos * SCALE as i32, Size::new(SCALE as u32, SCALE as u32))
+                .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
+                .draw(pcd).unwrap();
+            self.tick = 0;
+        } else {
+            self.tick += 1;
+        }
+    }
+}
+
 pub struct SnakeGame<'a> {
     pcd:    &'a mut PCD8544,
     inputs: &'a mut Inputs,
     delay:  &'a mut Delay,
     snake: Snake,
-    apple: Point,
+    apple: Apple,
     rand:  Rand,
 }
 
@@ -154,20 +184,20 @@ impl<'a> SnakeGame<'a> {
             inputs,
             delay,
             snake: Snake::new(),
-            apple: Point::new(0, 0),
+            apple: Apple::new(),
             rand:  Rand::new(25023540),
         }
     }
 
     fn make_apple(&mut self) {
-        self.apple.x = ((self.rand.next() as usize % (GRID_X-5)) + 2) as i32;
-        self.apple.y = ((self.rand.next() as usize % (GRID_Y-5)) + 2) as i32;
-        if self.apple.x % 2 == 1 {
-            self.apple.x += 1;
+        self.apple.pos.x = ((self.rand.next() as usize % (GRID_X-5)) + 2) as i32;
+        self.apple.pos.y = ((self.rand.next() as usize % (GRID_Y-5)) + 2) as i32;
+        if self.apple.pos.x % 2 == 1 {
+            self.apple.pos.x += 1;
         }
 
-        if self.apple.y % 2 == 1 {
-            self.apple.y += 1;
+        if self.apple.pos.y % 2 == 1 {
+            self.apple.pos.y += 1;
         }
     }
 
@@ -197,12 +227,23 @@ impl<'a> SnakeGame<'a> {
             self.snake.set_dir(Direction::Right);
         }
 
-        if self.snake.eat_apple(self.apple) {
+        if self.snake.eat_apple(self.apple.pos) {
+            inverse_blink(self.pcd, self.delay, 500, 1);
             self.make_apple();
         }
 
         if !self.snake.update() {
-            return false;
+            self.pcd.inverse();
+            self.pcd.draw();
+            loop {
+                self.inputs.update();
+                match self.inputs.is_pressed().iter().find(|x| **x) {
+                    Some(_) => { return false; },
+                    None => {}
+                }
+
+                self.delay.delay_ms(20);
+            }
         }
 
         true
@@ -221,8 +262,19 @@ impl<'a> SnakeGame<'a> {
         self.snake.draw(self.pcd);
 
         // Apple
-        Rectangle::new(self.apple * SCALE as i32, Size::new(SCALE as u32, SCALE as u32))
+        self.apple.draw(self.pcd);
+
+        // Score
+        let x_size = if self.snake.tail_count > 9 {
+            10
+        } else {
+            5
+        };
+
+        Rectangle::new(Point::new(0,45-7), Size::new(x_size+3, 7+3))
             .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
+            .draw(self.pcd).unwrap();
+        Text::new(&String::<3>::from(self.snake.tail_count as u32), Point::new(2,45), MonoTextStyle::new(&FONT_5X7, BinaryColor::On))
             .draw(self.pcd).unwrap();
     }
 }
