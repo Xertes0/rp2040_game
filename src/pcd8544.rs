@@ -1,7 +1,8 @@
-use cortex_m::prelude::_embedded_hal_blocking_spi_Write;
+use cortex_m::{prelude::_embedded_hal_blocking_spi_Write, delay::Delay};
 use embedded_graphics::{prelude::{OriginDimensions, Size}, pixelcolor::BinaryColor, draw_target::DrawTarget, Pixel};
 use embedded_hal::digital::v2::OutputPin;
-use rp_pico::hal::{gpio::{Pin, PinId, Output, PushPull}, spi::{Spi, Enabled, SpiDevice}};
+use rp_pico::hal::{gpio::{Pin, Output, PushPull, bank0::{Gpio8, Gpio5, Gpio4}}, spi::{Spi, Enabled}};
+use rp_pico::pac::SPI0;
 
 const FUNCTION_SET: u8 = 0x20;
 const ADDRESSING_VERT: u8 = 0x02;
@@ -12,23 +13,29 @@ const SET_VOP: u8 = 0x80;
 const DISPLAY_NORMAL: u8 = 0x0c;
 const POWER_DOWN: u8 = 0x04;
 
+type GpioRst = Gpio8;
+type GpioCe  = Gpio5;
+type GpioDc  = Gpio4;
+type SpiPin  = SPI0;
+
 #[allow(non_camel_case_types)]
-pub struct PCD8544<GPIO_RST: PinId, GPIO_CE: PinId, GPIO_DC: PinId, SPI: SpiDevice> {
-    rst: Pin<GPIO_RST, Output<PushPull>>,
-    ce:  Pin<GPIO_CE, Output<PushPull>>,
-    dc:  Pin<GPIO_DC, Output<PushPull>>,
-    spi: Spi<Enabled, SPI, 8>,
+pub struct PCD8544 {
+    rst: Pin<GpioRst, Output<PushPull>>,
+    ce:  Pin<GpioCe, Output<PushPull>>,
+    dc:  Pin<GpioDc, Output<PushPull>>,
+    spi: Spi<Enabled, SpiPin, 8>,
     pub fnset: u8,
     draw_buffer: [u8; 84*48/8],
 }
 
 #[allow(non_camel_case_types)]
-impl<GPIO_RST: PinId, GPIO_CE: PinId, GPIO_DC: PinId, SPI: SpiDevice> PCD8544<GPIO_RST, GPIO_CE, GPIO_DC, SPI> {
+impl PCD8544 {
     pub fn new(
-            rst: Pin<GPIO_RST, Output<PushPull>>,
-            ce:  Pin<GPIO_CE, Output<PushPull>>,
-            dc:  Pin<GPIO_DC, Output<PushPull>>,
-            spi: Spi<Enabled, SPI, 8>
+            rst: Pin<GpioRst, Output<PushPull>>,
+            ce:  Pin<GpioCe, Output<PushPull>>,
+            dc:  Pin<GpioDc, Output<PushPull>>,
+            spi: Spi<Enabled, SpiPin, 8>,
+            delay: &mut Delay
     ) -> Self {
         let mut pcd = Self {
             fnset: FUNCTION_SET & !ADDRESSING_VERT,
@@ -38,19 +45,40 @@ impl<GPIO_RST: PinId, GPIO_CE: PinId, GPIO_DC: PinId, SPI: SpiDevice> PCD8544<GP
             spi,
             draw_buffer: [0; 84*48/8],
         };
-
-        pcd.command(pcd.fnset);
-        pcd.command(pcd.fnset | EXTENDED_INSTR);
-        pcd.command(TEMP_COEFF_2);
-        pcd.command(BIAS_1_40);
-        pcd.command(SET_VOP | 0x3f);
-        pcd.command(pcd.fnset & !EXTENDED_INSTR);
-        pcd.command(DISPLAY_NORMAL);
-
-        //clear
-        pcd.draw(&[255u8;84*48/8]);
-
+        pcd.init(delay);
         pcd
+    }
+
+    fn init(&mut self, delay: &mut Delay) {
+        self.ce.set_high().unwrap();
+        self.dc.set_low().unwrap();
+
+        self.rst.set_high().unwrap();
+        delay.delay_us(100);
+        self.rst.set_low().unwrap();
+        delay.delay_us(100);
+        self.rst.set_high().unwrap();
+        delay.delay_us(100);
+
+        self.command(self.fnset);
+        self.command(self.fnset | EXTENDED_INSTR);
+        self.command(TEMP_COEFF_2);
+        self.command(BIAS_1_40);
+        self.command(SET_VOP | 0x3f);
+        self.command(self.fnset & !EXTENDED_INSTR);
+        self.command(DISPLAY_NORMAL);
+
+        //clear with 1s
+        self.set(255);
+    }
+
+    pub fn set(&mut self, value: u8) {
+        self.draw(&[value;84*48/8]);
+    }
+
+    pub fn clear(&mut self) {
+        self.draw_buffer = [0; 84*48/8];
+        self.draw_self();
     }
 
     fn command(&mut self, data: u8) {
@@ -82,7 +110,7 @@ impl<GPIO_RST: PinId, GPIO_CE: PinId, GPIO_DC: PinId, SPI: SpiDevice> PCD8544<GP
 }
 
 #[allow(non_camel_case_types)]
-impl<GPIO_RST: PinId, GPIO_CE: PinId, GPIO_DC: PinId, SPI: SpiDevice> Drop for PCD8544<GPIO_RST, GPIO_CE, GPIO_DC, SPI> {
+impl Drop for PCD8544 {
     fn drop(&mut self) {
         self.fnset |= POWER_DOWN;
         self.command(self.fnset);
@@ -90,14 +118,14 @@ impl<GPIO_RST: PinId, GPIO_CE: PinId, GPIO_DC: PinId, SPI: SpiDevice> Drop for P
 }
 
 #[allow(non_camel_case_types)]
-impl<GPIO_RST: PinId, GPIO_CE: PinId, GPIO_DC: PinId, SPI: SpiDevice> OriginDimensions for PCD8544<GPIO_RST, GPIO_CE, GPIO_DC, SPI> {
+impl OriginDimensions for PCD8544 {
     fn size(&self) -> Size {
         Size::new(84, 48)
     }
 }
 
 #[allow(non_camel_case_types)]
-impl<GPIO_RST: PinId, GPIO_CE: PinId, GPIO_DC: PinId, SPI: SpiDevice> DrawTarget for PCD8544<GPIO_RST, GPIO_CE, GPIO_DC, SPI> {
+impl DrawTarget for PCD8544 {
     type Color = BinaryColor;
 
     type Error = core::convert::Infallible;

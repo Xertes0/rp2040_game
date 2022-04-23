@@ -5,13 +5,20 @@
 #![no_main]
 
 mod pcd8544;
+mod inputs;
+mod menu;
+use inputs::Inputs;
+use menu::Menu;
+use core::cell::RefCell;
+
+use cortex_m::interrupt::Mutex;
 use pcd8544::PCD8544;
 
 use cortex_m_rt::entry;
 use defmt::*;
 use defmt_rtt as _;
 use embedded_graphics::{pixelcolor::BinaryColor, prelude::{Point, Size, Primitive}, primitives::{Circle, PrimitiveStyle, Rectangle}, Drawable, mono_font::{MonoTextStyle, iso_8859_10::FONT_4X6, ascii::FONT_6X10, iso_8859_1::FONT_5X7}, text::Text};
-use embedded_hal::{digital::v2::OutputPin, spi::MODE_0};
+use embedded_hal::{digital::v2::{OutputPin, InputPin, ToggleableOutputPin}, spi::MODE_0};
 use embedded_time::{fixed_point::FixedPoint, rate::Extensions};
 use panic_probe as _;
 
@@ -24,8 +31,13 @@ use bsp::hal::{
     clocks::{init_clocks_and_plls, Clock},
     pac,
     sio::Sio,
-    watchdog::Watchdog, gpio::{Pin, Output, PushPull, PinId, FunctionSpi}, Spi,
+    watchdog::Watchdog, gpio::{Pin, Output, PushPull, PinId, FunctionSpi}, Spi, rom_data::reset_to_usb_boot,
 };
+
+use pac::interrupt;
+
+type RebootPin = bsp::hal::gpio::Pin<bsp::hal::gpio::bank0::Gpio22, bsp::hal::gpio::PullDownInput>;
+static REBOOT_PIN: Mutex<RefCell<Option<RebootPin>>> = Mutex::new(RefCell::new(None));
 
 #[entry]
 fn main() -> ! {
@@ -60,45 +72,64 @@ fn main() -> ! {
 
     let mut led_pin = pins.led.into_push_pull_output();
 
-    led_pin.set_high().unwrap();
+    let reboot_pin = pins.gpio22.into_pull_down_input();
+    reboot_pin.set_interrupt_enabled(bsp::hal::gpio::Interrupt::EdgeHigh, true);
+    cortex_m::interrupt::free(|cs| {
+        REBOOT_PIN.borrow(cs).replace(Some(reboot_pin));
+    });
 
-    let mut rst_pin = pins.gpio8.into_push_pull_output();
-    let mut ce_pin  = pins.gpio5.into_push_pull_output();
-    let mut dc_pin  = pins.gpio4.into_push_pull_output();
-    //let mut din_pin = pins.gpio7.into_push_pull_output();
-    //let mut clk_pin = pins.gpio6.into_push_pull_output();
-    let _ = pins.gpio6.into_mode::<FunctionSpi>();
-    let _ = pins.gpio7.into_mode::<FunctionSpi>();
-    let spi = Spi::<_, _, 8>::new(pac.SPI0).init(&mut pac.RESETS, 125_000_000u32.Hz(), 2_000_000u32.Hz(), &MODE_0);
+    unsafe {
+        pac::NVIC::unmask(pac::Interrupt::IO_IRQ_BANK0);
+    }
 
-    ce_pin.set_high().unwrap();
-    dc_pin.set_low().unwrap();
+    {
+        led_pin.set_high().unwrap();
+        let rst_pin = pins.gpio8.into_push_pull_output();
+        let ce_pin  = pins.gpio5.into_push_pull_output();
+        let dc_pin  = pins.gpio4.into_push_pull_output();
+        //let mut din_pin = pins.gpio7.into_push_pull_output();
+        //let mut clk_pin = pins.gpio6.into_push_pull_output();
+        let _ = pins.gpio6.into_mode::<FunctionSpi>();
+        let _ = pins.gpio7.into_mode::<FunctionSpi>();
+        let spi = Spi::<_, _, 8>::new(pac.SPI0).init(&mut pac.RESETS, 125_000_000u32.Hz(), 2_000_000u32.Hz(), &MODE_0);
 
-    rst_pin.set_high().unwrap();
-    delay.delay_us(100);
-    rst_pin.set_low().unwrap();
-    delay.delay_us(100);
-    rst_pin.set_high().unwrap();
-    delay.delay_us(100);
+        let mut pcd = PCD8544::new(rst_pin, ce_pin, dc_pin, spi, &mut delay);
 
-    led_pin.set_low().unwrap();
+        led_pin.set_low().unwrap();
 
-    let mut pcd = PCD8544::new(rst_pin, ce_pin, dc_pin, spi);
+        let mut inputs = Inputs::new(
+            pins.gpio21.into_pull_down_input(),
+            pins.gpio20.into_pull_down_input(),
+            pins.gpio19.into_pull_down_input(),
+            pins.gpio18.into_pull_down_input(),
+        );
 
-    //let raw_image = ImageRaw::<BinaryColor>::new(&[0;84*48], 84);
-    //let mut image = Image::new(&raw_image, Point::zero());
-    //Rectangle::new(Point::new(0, 20), Size::new(10, 10))
-    //    .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
-    //    .draw(&mut pcd).unwrap();
-    let style = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
-    //Text::new("Abc!", Point::new(5, 15), style).draw(&mut pcd).unwrap();
-    Text::new("Ekran test", Point::new(5, 15), style).draw(&mut pcd).unwrap();
+        let mut menu = Menu::new(&mut pcd, &mut inputs, &mut delay);
+        menu.run();
+    }
 
-    Circle::new(Point::new(10, 20), 30)
-        .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
-        .draw(&mut pcd).unwrap();
+    loop {
+        led_pin.toggle().unwrap();
+        delay.delay_ms(1000);
+        cortex_m::asm::nop();
+    }
+}
 
-    loop {}
+#[allow(non_snake_case)]
+#[interrupt]
+fn IO_IRQ_BANK0() {
+    static mut REBOOT_BUTTON: Option<RebootPin> = None;
+
+    if REBOOT_BUTTON.is_none() {
+        cortex_m::interrupt::free(|cs| {
+            *REBOOT_BUTTON = REBOOT_PIN.borrow(cs).take();
+        });
+    }
+
+    if let Some(button) = REBOOT_BUTTON {
+        reset_to_usb_boot(0, 0);
+        button.clear_interrupt(bsp::hal::gpio::Interrupt::EdgeHigh);
+    }
 }
 
 // End of file
