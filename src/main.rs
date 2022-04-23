@@ -7,6 +7,9 @@
 mod pcd8544;
 mod inputs;
 mod menu;
+mod games;
+mod rand;
+
 use inputs::Inputs;
 use menu::Menu;
 use core::cell::RefCell;
@@ -17,8 +20,7 @@ use pcd8544::PCD8544;
 use cortex_m_rt::entry;
 use defmt::*;
 use defmt_rtt as _;
-use embedded_graphics::{pixelcolor::BinaryColor, prelude::{Point, Size, Primitive}, primitives::{Circle, PrimitiveStyle, Rectangle}, Drawable, mono_font::{MonoTextStyle, iso_8859_10::FONT_4X6, ascii::FONT_6X10, iso_8859_1::FONT_5X7}, text::Text};
-use embedded_hal::{digital::v2::{OutputPin, InputPin, ToggleableOutputPin}, spi::MODE_0};
+use embedded_hal::{digital::v2::{OutputPin, ToggleableOutputPin}, spi::MODE_0};
 use embedded_time::{fixed_point::FixedPoint, rate::Extensions};
 use panic_probe as _;
 
@@ -31,7 +33,7 @@ use bsp::hal::{
     clocks::{init_clocks_and_plls, Clock},
     pac,
     sio::Sio,
-    watchdog::Watchdog, gpio::{Pin, Output, PushPull, PinId, FunctionSpi}, Spi, rom_data::reset_to_usb_boot,
+    watchdog::Watchdog, gpio::FunctionSpi, Spi, rom_data::reset_to_usb_boot,
 };
 
 use pac::interrupt;
@@ -82,8 +84,10 @@ fn main() -> ! {
         pac::NVIC::unmask(pac::Interrupt::IO_IRQ_BANK0);
     }
 
+    let mut vcc_pin = pins.gpio0.into_push_pull_output();
     {
         led_pin.set_high().unwrap();
+        let mut bl_pin  = pins.gpio1.into_push_pull_output();
         let rst_pin = pins.gpio8.into_push_pull_output();
         let ce_pin  = pins.gpio5.into_push_pull_output();
         let dc_pin  = pins.gpio4.into_push_pull_output();
@@ -93,6 +97,8 @@ fn main() -> ! {
         let _ = pins.gpio7.into_mode::<FunctionSpi>();
         let spi = Spi::<_, _, 8>::new(pac.SPI0).init(&mut pac.RESETS, 125_000_000u32.Hz(), 2_000_000u32.Hz(), &MODE_0);
 
+        vcc_pin.set_high().unwrap();
+        bl_pin.set_high().unwrap();
         let mut pcd = PCD8544::new(rst_pin, ce_pin, dc_pin, spi, &mut delay);
 
         led_pin.set_low().unwrap();
@@ -106,7 +112,10 @@ fn main() -> ! {
 
         let mut menu = Menu::new(&mut pcd, &mut inputs, &mut delay);
         menu.run();
+
+        bl_pin.set_low().unwrap();
     }
+    vcc_pin.set_low().unwrap();
 
     loop {
         led_pin.toggle().unwrap();

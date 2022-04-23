@@ -7,6 +7,7 @@ use embedded_graphics::prelude::{Point, Size, Primitive};
 use embedded_graphics::primitives::{Rectangle, PrimitiveStyle, Line};
 use embedded_graphics::text::Text;
 
+use crate::games::snake::SnakeGame;
 use crate::inputs::Inputs;
 use crate::pcd8544::PCD8544;
 
@@ -59,10 +60,14 @@ impl<'a> Menu<'a> {
             let inputs = self.inputs.is_pressed();
             if inputs[0] {
                 match self.selected {
-                    Selected(1) => {
-                        return;
+                    Selected(0) => {
+                        let mut snake_game = SnakeGame::new(self.pcd, self.inputs, self.delay);
+                        snake_game.run();
+                        self.draw();
                     },
-                    _ => {}
+                    _ => {
+                        return;
+                    }
                 }
             }
             else if inputs[1] {

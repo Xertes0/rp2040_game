@@ -133,13 +133,12 @@ impl DrawTarget for PCD8544 {
     fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
     where
         I: IntoIterator<Item = embedded_graphics::Pixel<Self::Color>> {
-        //self.draw_buffer = [0; 84*48/8];
         for Pixel(coord, color) in pixels.into_iter() {
-            //let x = coord.x as usize;
-            //let y = (coord.y.abs() / 8) as usize;
-            //let i = (coord.y.abs() % 8) as u8;
-            let index = ((coord.y >> 3) * 84 + coord.x) as usize;
-            let offset = coord.y as usize & 0x07;
+            if coord.y < 0 ||  coord.y > 47 {
+                panic!();
+            }
+            let index = (((47 - coord.y) >> 3) * 84 + (83 - coord.x)) as usize;
+            let offset = (47 - coord.y) as usize & 0x07;
             self.draw_buffer[index] = (self.draw_buffer[index] & !(0x01 << offset)) | ((if color.is_on() {1} else {0}) << offset);
         }
 
