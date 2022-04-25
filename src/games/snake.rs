@@ -15,11 +15,11 @@ use crate::sfx::inverse_blink::inverse_blink;
 
 const MAX_SIZE: usize = 100;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 enum Direction {
     Left,
     Down,
-    Top,
+    Up,
     Right,
 }
 
@@ -86,7 +86,7 @@ impl Snake {
                         return false;
                     }
                 },
-                Direction::Top => {
+                Direction::Up => {
                     if self.tail[i].pos.y == 1 {
                         return false;
                     }
@@ -136,6 +136,10 @@ impl Snake {
         }
 
         false
+    }
+
+    pub fn get_dir(&self) -> Direction {
+        self.tail[0].dir
     }
 }
 
@@ -217,13 +221,13 @@ impl<'a> SnakeGame<'a> {
     fn update(&mut self) -> bool {
         self.inputs.update();
         let inputs = self.inputs.is_pressed();
-        if inputs[0] {
+        if inputs[0] && self.snake.get_dir() != Direction::Right {
             self.snake.set_dir(Direction::Left);
-        } else if inputs[1] {
+        } else if inputs[1] && self.snake.get_dir() != Direction::Up {
             self.snake.set_dir(Direction::Down);
-        } else if inputs[2] {
-            self.snake.set_dir(Direction::Top);
-        } else if inputs[3] {
+        } else if inputs[2] && self.snake.get_dir() != Direction::Down {
+            self.snake.set_dir(Direction::Up);
+        } else if inputs[3] && self.snake.get_dir() != Direction::Left {
             self.snake.set_dir(Direction::Right);
         }
 
@@ -276,5 +280,7 @@ impl<'a> SnakeGame<'a> {
             .draw(self.pcd).unwrap();
         Text::new(&String::<3>::from(self.snake.tail_count as u32), Point::new(2,45), MonoTextStyle::new(&FONT_5X7, BinaryColor::On))
             .draw(self.pcd).unwrap();
+
+        self.pcd.draw();
     }
 }

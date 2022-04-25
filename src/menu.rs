@@ -97,6 +97,8 @@ impl<'a> Menu<'a> {
 
         draw_option(self.pcd, style, "Graj", 24, self.selected.0 == 0);
         draw_option(self.pcd, style, "Wyjdz", 38, self.selected.0 == 1);
+
+        self.pcd.draw();
     }
 }
 

@@ -146,7 +146,7 @@ impl DrawTarget for PCD8544 {
             self.draw_buffer[index] = (self.draw_buffer[index] & !(0x01 << offset)) | ((if color.is_on() {1} else {0}) << offset);
         }
 
-        self.draw();
+        //self.draw();
         Ok(())
     }
 }
