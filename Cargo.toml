@@ -1,5 +1,5 @@
 [package]
-edition = "2018"
+edition = "2021"
 name = "rp2040-game"
 version = "0.1.0"
 resolver = "2"
