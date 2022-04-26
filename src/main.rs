@@ -105,18 +105,22 @@ fn main() -> ! {
 
         #[derive(Clone, Copy)]
         enum MenuSelected {
-            Play, Quit
+            Play, Backlight, Quit
         }
 
         'menu: loop {
             let mut menu = Menu::new([
                 MenuOption::new(MenuSelected::Play, "Graj"),
+                MenuOption::new(MenuSelected::Backlight, "Podswl"),
                 MenuOption::new(MenuSelected::Quit, "Wyjdz"),
             ]);
 
             match menu.run(&mut pcd, &mut inputs, &mut delay) {
                 MenuSelected::Play => {
                     GamesMenu::run(&mut pcd, &mut inputs, &mut delay);
+                },
+                MenuSelected::Backlight => {
+                    bl_pin.toggle();
                 },
                 MenuSelected::Quit => {
                     break 'menu;
