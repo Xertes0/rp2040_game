@@ -8,8 +8,9 @@ mod games;
 mod rand;
 mod sfx;
 
+use games::snake::SnakeGame;
 use inputs::Inputs;
-use menu::Menu;
+use menu::{Menu, MenuOption};
 use core::cell::RefCell;
 
 use cortex_m::interrupt::Mutex;
@@ -102,8 +103,48 @@ fn main() -> ! {
             pins.gpio18.into_pull_down_input(),
         );
 
-        let mut menu = Menu::new(&mut pcd, &mut inputs, &mut delay);
-        menu.run();
+        #[derive(Clone, Copy)]
+        enum MenuSelected {
+            Play, Quit
+        }
+
+        #[derive(Clone, Copy)]
+        enum GameSelected {
+            Snake, PingPong, Quit
+        }
+
+        'menu: loop {
+            let mut menu = Menu::new([
+                MenuOption::new(MenuSelected::Play, "Graj"),
+                MenuOption::new(MenuSelected::Quit, "Wyjdz"),
+            ]);
+
+            match menu.run(&mut pcd, &mut inputs, &mut delay) {
+                MenuSelected::Play => {
+                    let mut game_menu = Menu::new([
+                        MenuOption::new(GameSelected::Snake, "Wensz"),
+                        MenuOption::new(GameSelected::PingPong, "PingPong"),
+                        MenuOption::new(GameSelected::Quit, "Wyjdz"),
+                    ]);
+
+                    match game_menu.run(&mut pcd, &mut inputs, &mut delay) {
+                        GameSelected::Snake => {
+                            let mut snake_game = SnakeGame::new(&mut pcd, &mut inputs, &mut delay);
+                            snake_game.run();
+                        },
+                        GameSelected::PingPong => {
+
+                        },
+                        GameSelected::Quit => {
+
+                        }
+                    }
+                },
+                MenuSelected::Quit => {
+                    break 'menu;
+                }
+            }
+        }
 
         bl_pin.set_low().unwrap();
     }

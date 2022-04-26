@@ -7,15 +7,13 @@ use embedded_graphics::prelude::{Point, Size, Primitive};
 use embedded_graphics::primitives::{Rectangle, PrimitiveStyle, Line};
 use embedded_graphics::text::Text;
 
-use crate::games::snake::SnakeGame;
 use crate::inputs::Inputs;
 use crate::pcd8544::PCD8544;
 
 const WIDTH: usize = 84;
 
-const OPTION_COUNT: usize = 2;
-struct Selected(usize);
-impl Selected {
+struct Selected<const OPTION_COUNT: usize>(usize);
+impl<const OPTION_COUNT: usize> Selected<OPTION_COUNT> {
     pub fn inc(&mut self) {
         self.0 += 1;
         if self.0 == OPTION_COUNT {
@@ -30,88 +28,113 @@ impl Selected {
             self.0 -= 1;
         }
     }
+
+    pub fn peek(&self) -> usize {
+        if self.0 + 1 == OPTION_COUNT {
+            0
+        } else {
+            self.0 + 1
+        }
+    }
 }
 
-pub struct Menu<'a> {
-    pcd:    &'a mut PCD8544,
-    inputs: &'a mut Inputs,
-    delay:  &'a mut Delay,
-    selected: Selected,
+pub struct MenuOption<'a, OptionId: Copy>{
+    id: OptionId,
+    text: &'a str,
 }
 
-impl<'a> Menu<'a> {
-    pub fn new(
-        pcd:    &'a mut PCD8544,
-        inputs: &'a mut Inputs,
-        delay:  &'a mut Delay
-        ) -> Self {
+impl<'a, OptionId: Copy> MenuOption<'a, OptionId> {
+    pub fn new(id: OptionId, text: &'a str) -> Self {
+        Self {
+            id,
+            text,
+        }
+    }
+}
+
+pub struct Menu<'a, OptionId: Copy, const OPTION_COUNT: usize> {
+    options:  [MenuOption<'a, OptionId>; OPTION_COUNT],
+    selected: Selected<OPTION_COUNT>,
+}
+
+impl<'a, OptionId: Copy, const OPTION_COUNT: usize> Menu<'a, OptionId, OPTION_COUNT> {
+    pub fn new(options: [MenuOption<'a, OptionId>; OPTION_COUNT]) -> Self {
         Self{
-            pcd,
-            inputs,
-            delay,
-            selected: Selected(0),
+            options,
+            selected: Selected::<OPTION_COUNT>(0),
         }
     }
 
-    pub fn run(&mut self) {
-        self.draw();
+    pub fn run(&mut self, pcd: &mut PCD8544, inputs: &mut Inputs, delay: &mut Delay) -> OptionId {
+        self.draw(pcd);
         loop {
-            self.inputs.update();
-            let inputs = self.inputs.is_pressed();
+            inputs.update();
+            let inputs = inputs.is_pressed();
             if inputs[0] {
-                match self.selected {
-                    Selected(0) => {
-                        let mut snake_game = SnakeGame::new(self.pcd, self.inputs, self.delay);
-                        snake_game.run();
-                        self.draw();
-                    },
-                    _ => {
-                        return;
-                    }
-                }
+                return self.options[self.selected.0].id;
             }
             else if inputs[1] {
                 self.selected.inc();
-                self.draw();
+                self.draw(pcd);
             } else if inputs[2] {
                 self.selected.dec();
-                self.draw();
+                self.draw(pcd);
             }
-            self.delay.delay_ms(100);
+            delay.delay_ms(100);
         }
     }
 
-    pub fn draw(&mut self) {
-        self.pcd.clear();
+    pub fn draw(&self, pcd: &mut PCD8544) {
+        pcd.clear();
 
+        // Border
         Rectangle::new(Point::new(0, 0), Size::new(84, 48))
             .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
-            .draw(self.pcd).unwrap();
+            .draw(pcd).unwrap();
 
+        // Text style
         let style = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
-        draw_option(self.pcd, style, "rp2040", 8, false);
 
+        // Header
+        self.draw_header(pcd, "rp2040", style);
         Line::new(Point::new(0,12), Point::new(WIDTH as i32, 12))
             .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
-            .draw(self.pcd).unwrap();
-
-        draw_option(self.pcd, style, "Graj", 24, self.selected.0 == 0);
-        draw_option(self.pcd, style, "Wyjdz", 38, self.selected.0 == 1);
-
-        self.pcd.draw();
-    }
-}
-
-fn draw_option(pcd: &mut PCD8544, style: MonoTextStyle<BinaryColor>, text: &str, y: usize, outline: bool) {
-    let pos = center_text(text.len() * 6);
-    let font_width = style.font.character_size;
-    Text::new(text, Point::new(pos as i32, y as i32), style).draw(pcd).unwrap();
-    if outline {
-        Rectangle::new(
-            Point::new((pos - 2) as i32, y as i32 - font_width.height as i32 +2),
-            Size::new((text.len() as u32 * font_width.width) + 3, font_width.height+3))
-            .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
             .draw(pcd).unwrap();
+
+        // Options
+        self.draw_options(pcd, style);
+
+        // Draw to pcd
+        pcd.draw();
+    }
+
+    fn draw_header(&self, pcd: &mut PCD8544, text: &str, style: MonoTextStyle<BinaryColor>) {
+        let pos = center_text(text.len() * 6);
+        Text::new(text, Point::new(pos as i32, 8), style).draw(pcd).unwrap();
+    }
+
+    fn draw_options(&self, pcd: &mut PCD8544, style: MonoTextStyle<BinaryColor>) {
+        let mut first = true;
+        for i in [self.selected.0, self.selected.peek()] {
+            let y = if first {
+                first = false;
+                24
+            } else {
+                38
+            };
+
+            let text = self.options[i].text;
+            let pos = center_text(text.len() * 6);
+            let font_width = style.font.character_size;
+            Text::new(text, Point::new(pos as i32, y as i32), style).draw(pcd).unwrap();
+            if self.selected.0 == i {
+                Rectangle::new(
+                    Point::new((pos - 2) as i32, y as i32 - font_width.height as i32 +2),
+                    Size::new((text.len() as u32 * font_width.width) + 3, font_width.height+3))
+                    .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
+                    .draw(pcd).unwrap();
+            }
+        }
     }
 }
 
