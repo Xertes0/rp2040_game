@@ -15,11 +15,14 @@ pub struct GamesMenu;
 
 impl GamesMenu {
     pub fn run(pcd: &mut PCD8544, inputs: &mut Inputs, delay: &mut Delay) {
-        let mut game_menu = Menu::new([
-            MenuOption::new(GameSelected::Snake, "Wensz"),
-            MenuOption::new(GameSelected::PingPong, "PingPong"),
-            MenuOption::new(GameSelected::Quit, "Wyjdz"),
-        ]);
+        let mut game_menu = Menu::new(
+            "Graj",
+            [
+                MenuOption::new(GameSelected::Snake, "Wensz"),
+                MenuOption::new(GameSelected::PingPong, "PingPong"),
+                MenuOption::new(GameSelected::Quit, "Wyjdz"),
+            ]
+            );
 
         match game_menu.run(pcd, inputs, delay) {
             GameSelected::Snake => {

@@ -53,13 +53,15 @@ impl<'a, OptionId: Copy> MenuOption<'a, OptionId> {
 }
 
 pub struct Menu<'a, OptionId: Copy, const OPTION_COUNT: usize> {
-    options:  [MenuOption<'a, OptionId>; OPTION_COUNT],
+    header: &'a str,
+    options: [MenuOption<'a, OptionId>; OPTION_COUNT],
     selected: Selected<OPTION_COUNT>,
 }
 
 impl<'a, OptionId: Copy, const OPTION_COUNT: usize> Menu<'a, OptionId, OPTION_COUNT> {
-    pub fn new(options: [MenuOption<'a, OptionId>; OPTION_COUNT]) -> Self {
+    pub fn new(header: &'a str, options: [MenuOption<'a, OptionId>; OPTION_COUNT]) -> Self {
         Self{
+            header,
             options,
             selected: Selected::<OPTION_COUNT>(0),
         }
@@ -96,8 +98,8 @@ impl<'a, OptionId: Copy, const OPTION_COUNT: usize> Menu<'a, OptionId, OPTION_CO
         let style = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
 
         // Header
-        self.draw_header(pcd, "rp2040", style);
-        Line::new(Point::new(0,12), Point::new(WIDTH as i32, 12))
+        self.draw_header(pcd, self.header, style);
+        Line::new(Point::new(0,11), Point::new(WIDTH as i32, 11))
             .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
             .draw(pcd).unwrap();
 
@@ -129,8 +131,8 @@ impl<'a, OptionId: Copy, const OPTION_COUNT: usize> Menu<'a, OptionId, OPTION_CO
             Text::new(text, Point::new(pos as i32, y as i32), style).draw(pcd).unwrap();
             if self.selected.0 == i {
                 Rectangle::new(
-                    Point::new((pos - 2) as i32, y as i32 - font_width.height as i32 +2),
-                    Size::new((text.len() as u32 * font_width.width) + 3, font_width.height+3))
+                    Point::new((pos - 3) as i32, y as i32 - font_width.height as i32 + 2),
+                    Size::new((text.len() as u32 * font_width.width) + 5, font_width.height+3))
                     .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
                     .draw(pcd).unwrap();
             }
