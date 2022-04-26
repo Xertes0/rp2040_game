@@ -8,7 +8,7 @@ mod games;
 mod rand;
 mod sfx;
 
-use games::snake::SnakeGame;
+use games::games_menu::GamesMenu;
 use inputs::Inputs;
 use menu::{Menu, MenuOption};
 use core::cell::RefCell;
@@ -108,11 +108,6 @@ fn main() -> ! {
             Play, Quit
         }
 
-        #[derive(Clone, Copy)]
-        enum GameSelected {
-            Snake, PingPong, Quit
-        }
-
         'menu: loop {
             let mut menu = Menu::new([
                 MenuOption::new(MenuSelected::Play, "Graj"),
@@ -121,24 +116,7 @@ fn main() -> ! {
 
             match menu.run(&mut pcd, &mut inputs, &mut delay) {
                 MenuSelected::Play => {
-                    let mut game_menu = Menu::new([
-                        MenuOption::new(GameSelected::Snake, "Wensz"),
-                        MenuOption::new(GameSelected::PingPong, "PingPong"),
-                        MenuOption::new(GameSelected::Quit, "Wyjdz"),
-                    ]);
-
-                    match game_menu.run(&mut pcd, &mut inputs, &mut delay) {
-                        GameSelected::Snake => {
-                            let mut snake_game = SnakeGame::new(&mut pcd, &mut inputs, &mut delay);
-                            snake_game.run();
-                        },
-                        GameSelected::PingPong => {
-
-                        },
-                        GameSelected::Quit => {
-
-                        }
-                    }
+                    GamesMenu::run(&mut pcd, &mut inputs, &mut delay);
                 },
                 MenuSelected::Quit => {
                     break 'menu;
