@@ -101,9 +101,7 @@ impl Snake {
                     }
                 }
             }
-            let tmp = self.tail[i].dir;
-            self.tail[i].dir = next_dir;
-            next_dir = tmp;
+            core::mem::swap(&mut self.tail[i].dir, &mut next_dir);
         }
 
         if let Some(mut stale) = self.stale { // assume stale can't be > 1

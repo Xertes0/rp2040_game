@@ -120,7 +120,7 @@ fn main() -> ! {
                     GamesMenu::run(&mut pcd, &mut inputs, &mut delay);
                 },
                 MenuSelected::Backlight => {
-                    bl_pin.toggle();
+                    bl_pin.toggle().unwrap();
                 },
                 MenuSelected::Quit => {
                     break 'menu;

@@ -13,6 +13,6 @@ impl Rand {
 
     pub fn next(&mut self) -> u32 {
         self.next = self.next * Wrapping(1103515245) + Wrapping(12345);
-        return ((self.next/Wrapping(65536)) % Wrapping(32768)).0;
+        ((self.next/Wrapping(65536)) % Wrapping(32768)).0
     }
 }
