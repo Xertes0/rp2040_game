@@ -1,2 +1,3 @@
 pub mod games_menu;
-pub mod snake;
+mod snake;
+mod breakout;
