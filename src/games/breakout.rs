@@ -15,21 +15,77 @@ const BRICK_SIZE: Size = Size::new(13, 3);
 const BRICK_X_OFFSET: usize = (84 - (BRICK_X_COUNT * BRICK_SIZE.width as usize + ((BRICK_X_COUNT-1) * BRICK_X_SPACE))) / 2;
 const BRICK_Y_OFFSET: usize = 3;
 
+const BALL_SIZE: Size = Size::new(2,2);
+
 #[derive(Clone, Copy)]
 struct Brick {
     active: bool,
 }
 
-#[derive(Clone, Copy)]
+impl Brick {
+    pub fn check_collision(pos: Point, ball: Point) -> bool {
+        if  ball.x >= pos.x &&
+            ball.y >= pos.y &&
+            ball.x + BALL_SIZE.width as i32  <= pos.x + BRICK_SIZE.width as i32 &&
+            ball.y + BALL_SIZE.height as i32 <= pos.y + BRICK_SIZE.height as i32
+        {
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn actual_pos(x: usize, y: usize) -> Point {
+        Point::new(
+            (x as i32 * (BRICK_SIZE.width as i32 + BRICK_X_SPACE as i32)) + BRICK_X_OFFSET as i32,
+            (y as i32 * 5) + BRICK_Y_OFFSET as i32
+        )
+    }
+}
+
 struct Ball {
     pos: Point,
+    vel: (i32, i32),
 }
 
 impl Ball {
     pub fn new() -> Self {
         Self {
-            pos: Point::new(84/2, 8)
+            pos: Point::new(84/2, 45),
+            vel: (2,-1),
         }
+    }
+
+    pub fn update(&mut self) {
+        if self.pos.x >= 84 - BALL_SIZE.width as i32 {
+            self.reflect_x();
+        }
+        if self.pos.x <= 1 {
+            self.reflect_x();
+        }
+        if self.pos.y >= 48 - BALL_SIZE.height as i32 {
+            self.reflect_y();
+        }
+        if self.pos.y <= 1 {
+            self.reflect_y();
+        }
+
+        self.pos.x += self.vel.0;
+        self.pos.y += self.vel.1;
+    }
+
+    pub fn reflect_x(&mut self) {
+        self.vel.0 *= -1;
+    }
+
+    pub fn reflect_y(&mut self) {
+        self.vel.1 *= -1;
+    }
+
+    pub fn draw(&self, pcd: &mut PCD8544) {
+        Rectangle::new(self.pos, BALL_SIZE)
+            .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
+            .draw(pcd).unwrap();
     }
 }
 
@@ -61,11 +117,32 @@ impl<'a> Breakout<'a> {
             }
 
             self.draw();
-            self.delay.delay_ms(100);
+            self.delay.delay_ms(150);
         }
     }
 
     fn update(&mut self) -> bool {
+        self.ball.update();
+        for x in 0..BRICK_X_COUNT {
+            for y in 0..BRICK_Y_COUNT {
+                if !self.bricks[x][y].active { continue; }
+                let pos = Brick::actual_pos(x,y);
+                if Brick::check_collision(pos, self.ball.pos) {
+                    self.bricks[x][y].active = false;
+
+                    let x = (pos.x + (BRICK_SIZE.width as i32 / 2)) - (self.ball.pos.x + (BALL_SIZE.width as i32 / 2));
+                    let y = (pos.y + (BRICK_SIZE.height as i32 / 2)) - (self.ball.pos.y + (BALL_SIZE.height as i32 / 2));
+                    if x.abs() > y.abs()
+                    {
+                        self.ball.reflect_x();
+                    }
+                    else
+                    {
+                        self.ball.reflect_y();
+                    }
+                }
+            }
+        }
         true
     }
 
@@ -82,16 +159,14 @@ impl<'a> Breakout<'a> {
             for y in 0..BRICK_Y_COUNT {
                 if !self.bricks[x][y].active { continue; }
 
-                Rectangle::new(Point::new(
-                        (x as i32 * (BRICK_SIZE.width as i32 + BRICK_X_SPACE as i32)) + BRICK_X_OFFSET as i32,
-                        (y as i32 * 5) + BRICK_Y_OFFSET as i32
-                        ), BRICK_SIZE)
+                Rectangle::new(Brick::actual_pos(x,y), BRICK_SIZE)
                     .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
                     .draw(self.pcd).unwrap();
             }
         }
 
         // Ball
+        self.ball.draw(self.pcd);
 
         self.pcd.draw();
     }
